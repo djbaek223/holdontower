@@ -1,8 +1,24 @@
+import { Callbacks, Client, type Room } from '@colyseus/sdk'
 import { api, type BuildingId, type Channel, type PeerState } from './api'
 import { SpamGuard, checkChat } from './moderation'
 
 /**
+ * 실시간 서버 (Colyseus, server/ 폴더). 기본은 이 페이지를 연 주소의 2567 포트라서
+ * 같은 와이파이의 휴대폰도 그대로 접속된다. 배포에서는 VITE_REALTIME_URL 로 지정한다.
+ */
+export const REALTIME_URL =
+  (import.meta.env.VITE_REALTIME_URL as string | undefined) ||
+  (typeof location !== 'undefined' ? `${location.protocol}//${location.hostname}:2567` : 'http://localhost:2567')
+
+type ServerPlayer = { id: string; nickname: string; x: number; z: number; yaw: number }
+
+/**
  * 층 라운지 실시간 세션 (PRD F6·F7).
+ *
+ * 실제 서버(Supabase 로그인)는 Colyseus 라운지 방을 쓴다: 빌딩·층별 방, 30명이 차면 서버가 새 방을 만든다.
+ * 서버가 입장 자격(입주한 층, 이용 제한)과 채팅 규칙을 다시 확인한다.
+ *
+ * 아래는 로컬 테스트(?local) 전용: 같은 브라우저 탭끼리 BroadcastChannel 로 맞춘다.
  * 방 이름은 "lounge:빌딩:층:방번호". 한 방이 30명이면 다음 방으로 들어간다 (소식은 층 단위로 공유).
  *
  * 동기화 방식
@@ -42,7 +58,15 @@ export class LoungeSession {
   private listeners = new Set<() => void>()
   private newsListeners = new Set<() => void>()
   private closed = false
+  /** 들어가기 시도 번호: 나갔다 다시 들어오면(개발 모드 StrictMode 포함) 이전 시도의 결과는 버린다 */
+  private gen = 0
   private timer = 0
+  /** Colyseus 방 (실제 서버) */
+  private cRoom: Room | null = null
+  /** 연결 실패 이유 (화면에 보여 준다) */
+  error: string | null = null
+  private noticeListeners = new Set<(reason: string) => void>()
+  private crisisListeners = new Set<() => void>()
   /** 내가 차단한 사람: 채팅·말풍선·이모트를 숨긴다 (PRD F8) */
   private blocked = new Set<string>()
 
@@ -77,10 +101,100 @@ export class LoungeSession {
     this.listeners.forEach((f) => f())
   }
 
+  /** 서버가 채팅을 막았을 때 (도배·개인정보 등) 이유 */
+  onNotice(fn: (reason: string) => void) {
+    this.noticeListeners.add(fn)
+    return () => {
+      this.noticeListeners.delete(fn)
+    }
+  }
+  /** 서버가 위기 표현을 감지했을 때 (보낸 사람에게만) */
+  onCrisis(fn: () => void) {
+    this.crisisListeners.add(fn)
+    return () => {
+      this.crisisListeners.delete(fn)
+    }
+  }
+
+  /** 실제 서버: Colyseus 라운지 방에 들어간다 */
+  private async joinColyseus(g: number) {
+    try {
+      const token = await api.accessToken()
+      const room = await new Client(REALTIME_URL).joinOrCreate('lounge', {
+        building: this.building,
+        floor: this.floor,
+        token,
+        x: this.me.x,
+        z: this.me.z,
+        yaw: this.me.yaw,
+      })
+      if (this.closed || g !== this.gen) {
+        room.leave()
+        return
+      }
+      this.cRoom = room
+      const cb = Callbacks.get(room)
+      cb.listen('roomNo' as never, ((v: number) => {
+        this.room = v
+        this.emit()
+      }) as never)
+      cb.onAdd('players' as never, ((p: ServerPlayer, key: string) => {
+        if (key === room.sessionId || p.id === this.me.id) return
+        const now = Date.now()
+        this.peers.set(p.id, { id: p.id, nickname: p.nickname, x: p.x, z: p.z, yaw: p.yaw, tx: p.x, tz: p.z, tyaw: p.yaw, seen: now })
+        cb.onChange(p, () => {
+          const peer = this.peers.get(p.id)
+          if (!peer) return
+          peer.tx = p.x
+          peer.tz = p.z
+          peer.tyaw = p.yaw
+          peer.seen = Date.now()
+          if (peer.nickname !== p.nickname) {
+            peer.nickname = p.nickname
+            this.emit()
+          }
+        })
+        this.emit()
+      }) as never)
+      cb.onRemove('players' as never, ((p: ServerPlayer, key: string) => {
+        if (key === room.sessionId) return
+        this.peers.delete(p.id)
+        this.bubbles.delete(p.id)
+        this.emit()
+      }) as never)
+      for (const ev of ['chat', 'emote', 'news'] as const) room.onMessage(ev, (m: Record<string, unknown>) => this.onEvent(ev, m))
+      room.onMessage('notice', (m: { reason?: string }) => this.noticeListeners.forEach((f) => f(String(m?.reason ?? ''))))
+      room.onMessage('crisis', () => this.crisisListeners.forEach((f) => f()))
+      room.onMessage('chat:ok', () => {})
+      room.onLeave(() => {
+        if (this.closed) return
+        this.cRoom = null
+        this.error = '라운지 서버와 연결이 끊겼어요. 잠시 후 다시 들어와 주세요.'
+        this.emit()
+      })
+      this.error = null
+      this.emit()
+    } catch (e) {
+      if (g !== this.gen) return
+      const msg = String((e as Error).message ?? '')
+      this.error = msg.includes('restricted')
+        ? '신고 처리로 지금은 라운지에 들어갈 수 없어요.'
+        : msg.includes('not_on_floor') || msg.includes('not_resident')
+          ? '이 층 입주민만 라운지에 들어갈 수 있어요.'
+          : '라운지 서버에 연결하지 못했어요. 실시간 서버가 켜져 있는지 확인해 주세요.'
+      this.emit()
+    }
+  }
+
   /** 자리가 있는 첫 방에 들어간다 */
   async join() {
-    for (let n = 1; n <= 50 && !this.closed; n++) {
-      const full = await this.tryRoom(n)
+    const g = ++this.gen
+    this.closed = false
+    this.error = null
+    if (api.mode === 'supabase') return this.joinColyseus(g)
+    for (let n = 1; n <= 50 && !this.closed && g === this.gen; n++) {
+      const full = await this.tryRoom(n, g)
+      if (g !== this.gen) return // 그 사이 나갔다 다시 들어왔다: 이 시도는 버린다
       if (!full) {
         this.room = n
         this.emit()
@@ -96,7 +210,7 @@ export class LoungeSession {
     }
   }
 
-  private tryRoom(n: number) {
+  private tryRoom(n: number, g: number) {
     return new Promise<boolean>((resolve) => {
       let decided = false
       let ready = false
@@ -108,6 +222,9 @@ export class LoungeSession {
           this.peers.clear()
           this.present.clear()
           resolve(true)
+        } else if (g !== this.gen) {
+          ch.leave() // 이미 버려진 시도
+          resolve(false)
         } else {
           this.ch = ch
           resolve(false)
@@ -218,6 +335,12 @@ export class LoungeSession {
   }
 
   private sendPos(force = false) {
+    if (this.cRoom) {
+      this.lastSent = performance.now()
+      const { x, z, yaw } = this.me
+      this.cRoom.send('move', { x, z, yaw })
+      return
+    }
     if (!this.ch) return
     const now = performance.now()
     if (!force && now - this.lastSent < POS_INTERVAL) return
@@ -242,21 +365,24 @@ export class LoungeSession {
     if (!c.ok) return c
     const s = this.spam.check(c.text)
     if (!s.ok) return s
-    this.ch?.send('chat', { id: this.me.id, nickname: this.me.nickname, text: c.text })
+    if (this.cRoom) this.cRoom.send('chat', { text: c.text }) // 서버가 다시 검사한 뒤 다른 사람에게 보낸다
+    else this.ch?.send('chat', { id: this.me.id, nickname: this.me.nickname, text: c.text })
     this.bubbles.set(this.me.id, { text: c.text, kind: 'chat', at: Date.now() })
     this.pushLog({ id: this.me.id, nickname: this.me.nickname, text: c.text, at: Date.now(), mine: true })
     return null
   }
 
   emote(e: string) {
-    this.ch?.send('emote', { id: this.me.id, e })
+    if (this.cRoom) this.cRoom.send('emote', { e })
+    else this.ch?.send('emote', { id: this.me.id, e })
     this.bubbles.set(this.me.id, { text: e, kind: 'emote', at: Date.now() })
     this.emit()
   }
 
   /** 같은 층 소식이 새로 올라왔다고 방 사람들에게 알린다 (다른 방 사람은 열 때 새로 불러온다) */
   announceNews() {
-    this.ch?.send('news', { id: this.me.id })
+    if (this.cRoom) this.cRoom.send('news', {})
+    else this.ch?.send('news', { id: this.me.id })
   }
   onNews(fn: () => void) {
     this.newsListeners.add(fn)
@@ -282,7 +408,10 @@ export class LoungeSession {
 
   leave() {
     this.closed = true
+    this.gen++
     window.clearInterval(this.timer)
+    this.cRoom?.leave()
+    this.cRoom = null
     this.ch?.send('bye', { id: this.me.id })
     const ch = this.ch
     this.ch = null

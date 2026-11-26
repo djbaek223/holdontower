@@ -74,10 +74,10 @@ npm run build
 | F17 반응과 댓글 | 이모지 반응 5종(다시 누르면 취소), 100자 댓글, 소식·댓글 신고(사유 선택). 서로 다른 3명이 신고하면 임시로 숨김 |
 
 - 서버 규칙: `supabase/migrations/0002_stage3_lounge.sql` (0001 다음에 SQL Editor 에서 실행). 글 검사·도배 제한·같은 층 확인을 서버 함수가 다시 한다. 테스트: `supabase/tests/lounge.test.ts`
-- 실시간: Supabase Realtime 채널(Presence + Broadcast)을 쓴다. PRD 의 Colyseus 대신 별도 서버 없이 동작하게 했다. 채팅은 저장하지 않고, 받는 쪽도 같은 규칙으로 다시 검사한다
-- 로컬 테스트: 같은 브라우저의 탭끼리 `BroadcastChannel` 로 맞춘다. 탭마다 다른 사람으로 들어가려면 `?local&as=a`, `?local&as=b`
+- 실시간: **Colyseus 서버**(`../server`)를 쓴다. 빌딩·층별 방, 30명이 차면 새 방. 서버가 입장 자격(입주 층·이용 제한)과 채팅 규칙을 다시 확인한다. 채팅은 저장하지 않는다. 실행: `npm --prefix ../server run dev`
+- 로컬 테스트(`?local`): 서버 없이 같은 브라우저의 탭끼리 `BroadcastChannel` 로 맞춘다. 탭마다 다른 사람으로 들어가려면 `?local&as=a`, `?local&as=b`
 - 여러 기기에서 만나려면 서버 저장이 필요하다: 구글 로그인(`VITE_LOGIN=google`)을 켜거나 Supabase 익명 로그인을 켠다. 지금처럼 브라우저 저장만 쓰면 라운지·소식은 같은 브라우저 안에서만 공유된다
-- 4단계로 넘긴 것: 차단(F8), 위기 키워드 감지와 안내(F9), 채팅 신고 처리, 운영자 검토 화면, 비공개 Realtime 채널 권한
+- 4단계에서 더한 것: 차단(F8), 위기 표현 감지와 안내(F9), 운영자 검토 화면(`?admin`), 이용 제한, 탈퇴 — `supabase/migrations/0003_stage4_safety.sql`
 
 ## 구조
 

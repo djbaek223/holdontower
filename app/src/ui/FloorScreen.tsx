@@ -110,6 +110,18 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
 
   // 차단 목록이 바뀌면 라운지에도 반영
   useEffect(() => session.setBlocked(status.blocked), [session, status.blocked])
+  // 서버가 막은 채팅의 이유, 위기 표현 감지 (실시간 서버)
+  useEffect(() => {
+    const offNotice = session.onNotice((r) => setNotice(r))
+    const offCrisis = session.onCrisis(() => {
+      setCrisis(true)
+      api.recordMetric('crisis', 1).catch(() => {})
+    })
+    return () => {
+      offNotice()
+      offCrisis()
+    }
+  }, [session, setCrisis])
 
   const seconds = useFirstArrivalMetric()
   const [peopleOpen, setPeopleOpen] = useState(false)
@@ -183,7 +195,9 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
       <header className="elevator-head">
         <span className="chip">
           {b.name} · {label} 라운지
-          <span className="room">{restricted ? ' · 이용 제한 중' : session.room ? ` · ${session.room}번 방 ${session.count}명` : ' · 연결 중…'}</span>
+          <span className="room">
+            {restricted ? ' · 이용 제한 중' : session.error ? ' · 연결 안 됨' : session.room ? ` · ${session.room}번 방 ${session.count}명` : ' · 연결 중…'}
+          </span>
         </span>
         <span className="head-actions">
           <button className="chip button" onClick={backToElevator}>
@@ -195,6 +209,7 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
         </span>
       </header>
 
+      {session.error && !restricted && <p className="toast warn">{session.error}</p>}
       {restricted && (
         <p className="toast warn">
           신고 처리로 {new Date(status.restricted_until!).toLocaleString('ko-KR')}까지 라운지 대화와 글쓰기가 제한돼요.

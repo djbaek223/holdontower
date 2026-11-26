@@ -130,7 +130,9 @@ export interface Api {
   listComments(postId: number): Promise<NewsComment[]>
   addComment(postId: number, body: string): Promise<void>
   report(type: 'post' | 'comment' | 'chat' | 'user', targetId: string, reason: ReportReason, detail?: string): Promise<void>
-  /** 라운지 실시간 채널 */
+  /** 실시간 서버 입장용 로그인 토큰 (로컬 모드는 null) */
+  accessToken(): Promise<string | null>
+  /** 로컬 테스트용 라운지 채널 (같은 브라우저 탭끼리). 실제 서버는 Colyseus (lib/lounge.ts) */
   openChannel(name: string, me: PeerState, h: ChannelHandlers): Channel
   // 4단계: 안전
   myStatus(): Promise<MyStatus>
@@ -236,31 +238,12 @@ function supabaseApi(client: SupabaseClient): Api {
     async report(type, targetId, reason, detail) {
       await rpc('report_target', { p_type: type, p_target: targetId, p_reason: reason, p_detail: detail ?? null })
     },
-    openChannel(name, me, h) {
-      // 비공개 채널: 같은 층 입주민만 주고받는다 (0003 의 realtime.messages 정책)
-      const ch = client.channel(name, { config: { private: true, presence: { key: me.id }, broadcast: { self: false } } })
-      const peers = () =>
-        Object.values(ch.presenceState<PeerState>())
-          .map((list) => list[list.length - 1])
-          .filter(Boolean)
-          .map(({ id, nickname, x, z, yaw }) => ({ id, nickname, x, z, yaw }))
-      ch.on('presence', { event: 'sync' }, () => h.onSync(peers()))
-      ch.on('broadcast', { event: '*' }, (m: { event: string; payload: Record<string, unknown> }) => h.onEvent(m.event, m.payload))
-      // 실시간 연결에 로그인 토큰을 실어야 비공개 채널 권한을 확인할 수 있다
-      client.auth.getSession().then(({ data }) => {
-        if (data.session) client.realtime.setAuth(data.session.access_token)
-        ch.subscribe(async (status) => {
-          if (status === 'SUBSCRIBED') {
-            await ch.track(me)
-            h.onReady()
-          }
-        })
-      })
-      return {
-        track: (st) => void ch.track(st),
-        send: (event, payload) => void ch.send({ type: 'broadcast', event, payload }),
-        leave: () => void client.removeChannel(ch),
-      }
+    async accessToken() {
+      const { data } = await client.auth.getSession()
+      return data.session?.access_token ?? null
+    },
+    openChannel() {
+      throw new Error('실제 서버의 라운지는 Colyseus 를 쓴다 (lib/lounge.ts)')
     },
     async myStatus() {
       return rpc<MyStatus>('my_status', {})
@@ -495,6 +478,9 @@ function localApi(): Api {
         if (p) p.hidden = true
       }
       save(db)
+    },
+    async accessToken() {
+      return null
     },
     openChannel(name, me, h) {
       return localChannel(name, me, h)

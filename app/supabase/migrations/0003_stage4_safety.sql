@@ -8,7 +8,7 @@
 --  * 반복 위반자는 운영자가 기간을 정해 작성·라운지 입장을 제한한다.
 --  * 운영자(admins 표에 넣은 계정)만 신고 목록을 보고 처리한다.
 --  * 탈퇴하면 계정과 관련 기록을 모두 지운다.
---  * 라운지 실시간 채널은 비공개 채널로 바꾸고, 같은 빌딩·같은 층 입주민만 주고받게 한다.
+--  * 라운지 실시간 서버(Colyseus)는 입장할 때 my_residency·my_status 로 같은 층 입주민인지, 이용 제한 중인지 확인한다.
 
 -- ---------- 테이블 ----------
 
@@ -282,9 +282,10 @@ begin
 end;
 $$;
 
--- ---------- 라운지 실시간 채널 권한 (비공개 채널) ----------
+-- ---------- 라운지 입장 자격 ----------
 
--- 채널 이름 "lounge:빌딩:층:방번호" 에 들어갈 수 있는지: 그 빌딩·그 층 입주민이고 이용 제한 중이 아니어야 한다
+-- 라운지 방 "lounge:빌딩:층:..." 에 들어갈 수 있는지: 그 빌딩·그 층 입주민이고 이용 제한 중이 아니어야 한다
+-- (실시간 서버는 Colyseus. 이 함수는 같은 규칙을 SQL 로 확인할 때 쓴다)
 create or replace function public.can_join_lounge(p_topic text)
 returns boolean language sql stable security definer set search_path = public as $$
   select split_part(p_topic, ':', 1) = 'lounge'
@@ -295,19 +296,6 @@ returns boolean language sql stable security definer set search_path = public as
         and building_id = split_part(p_topic, ':', 2)
         and floor::text = split_part(p_topic, ':', 3)
     )
-$$;
-
-do $$
-begin
-  if to_regclass('realtime.messages') is not null then
-    execute 'drop policy if exists "라운지: 같은 층 입주민만 받기" on realtime.messages';
-    execute 'drop policy if exists "라운지: 같은 층 입주민만 보내기" on realtime.messages';
-    execute $p$create policy "라운지: 같은 층 입주민만 받기" on realtime.messages for select to authenticated
-      using (public.can_join_lounge(realtime.topic()))$p$;
-    execute $p$create policy "라운지: 같은 층 입주민만 보내기" on realtime.messages for insert to authenticated
-      with check (public.can_join_lounge(realtime.topic()))$p$;
-  end if;
-end;
 $$;
 
 -- ---------- 실행 권한 ----------

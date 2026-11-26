@@ -1,0 +1,25 @@
+{
+  "name": "holdontower-realtime",
+  "private": true,
+  "type": "module",
+  "description": "주식 빌딩 시티 층 라운지 실시간 서버 (Colyseus)",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../app/.env.local src/index.ts",
+    "dev:local": "LOCAL_AUTH=1 tsx watch --env-file-if-exists=../app/.env.local src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "tsx test/lounge.integration.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@colyseus/schema": "^5.0.51",
+    "@colyseus/ws-transport": "^0.18.5",
+    "@supabase/supabase-js": "^2.45.4",
+    "colyseus": "^0.18.12"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "^0.18.10",
+    "@types/node": "^26.6.11",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
