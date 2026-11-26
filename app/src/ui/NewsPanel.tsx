@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { api, REACTIONS, type NewsComment, type NewsPost, type ReportReason } from '../lib/api'
+import { api, ApiError, REACTIONS, type NewsComment, type NewsPost, type ReportReason } from '../lib/api'
+import { useApp } from '../store'
 import { COMMENT_MAX, NEWS_MAX, checkComment, checkNews, checkSourceUrl } from '../lib/moderation'
 
 const REASONS: { id: ReportReason; label: string }[] = [
@@ -9,6 +10,35 @@ const REASONS: { id: ReportReason; label: string }[] = [
   { id: 'privacy', label: '개인정보' },
   { id: 'other', label: '기타' },
 ]
+
+/** 위기 표현: 보내지 않고 나에게만 위로·상담 안내 (PRD F9) */
+function crisisGuard(): void {
+  useApp.getState().setCrisis(true)
+  api.recordMetric('crisis', 1).catch(() => {})
+}
+const isCrisisError = (e: unknown) => e instanceof ApiError && e.code === 'crisis_detected'
+
+/** 작성자 차단 (PRD F8): 그 사람의 소식·댓글·채팅이 나에게 보이지 않는다 */
+function BlockButton({ userId, onDone }: { userId?: string; onDone: (msg: string) => void }) {
+  if (!userId) return null
+  return (
+    <button
+      className="link tiny"
+      onClick={async () => {
+        try {
+          await api.block(userId)
+          const st = useApp.getState()
+          st.setStatus({ ...st.status, blocked: [...new Set([...st.status.blocked, userId])] })
+          onDone('차단했어요. 이 이웃의 글과 말이 보이지 않아요.')
+        } catch (e) {
+          onDone((e as Error).message)
+        }
+      }}
+    >
+      차단
+    </button>
+  )
+}
 
 function ago(iso: string) {
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000)
@@ -74,6 +104,7 @@ function Comments({ post, onChanged, notify }: { post: NewsPost; onChanged: () =
             <li key={c.id}>
               <strong>{c.author}</strong> {c.body} <span className="muted">· {ago(c.created_at)}</span>
               {!c.mine && <ReportButton type="comment" id={c.id} onDone={notify} />}
+              {!c.mine && <BlockButton userId={c.author_id} onDone={(m) => (notify(m), onChanged(), load())} />}
             </li>
           ))}
         </ul>
@@ -83,6 +114,10 @@ function Comments({ post, onChanged, notify }: { post: NewsPost; onChanged: () =
         onSubmit={async (e) => {
           e.preventDefault()
           const c = checkComment(text)
+          if (!c.ok && c.crisis) {
+            setText('')
+            return crisisGuard()
+          }
           if (!c.ok) return notify(c.reason)
           setBusy(true)
           try {
@@ -91,7 +126,10 @@ function Comments({ post, onChanged, notify }: { post: NewsPost; onChanged: () =
             await load()
             onChanged()
           } catch (err) {
-            notify((err as Error).message)
+            if (isCrisisError(err)) {
+              setText('')
+              crisisGuard()
+            } else notify((err as Error).message)
           } finally {
             setBusy(false)
           }
@@ -156,6 +194,7 @@ function PostCard({ post, onChanged, notify }: { post: NewsPost; onChanged: () =
           댓글 {post.comments}
         </button>
         {!post.mine && <ReportButton type="post" id={post.id} onDone={notify} />}
+        {!post.mine && <BlockButton userId={post.author_id} onDone={(m) => (notify(m), onChanged())} />}
       </div>
       {open && <Comments post={post} onChanged={onChanged} notify={notify} />}
     </li>
@@ -198,6 +237,10 @@ export function NewsPanel({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     const c = checkNews(body)
+    if (!c.ok && c.crisis) {
+      setBody('')
+      return crisisGuard()
+    }
     if (!c.ok) return setNotice(c.reason)
     const u = checkSourceUrl(url)
     if (!u.ok) return setNotice(u.reason)
@@ -209,7 +252,10 @@ export function NewsPanel({
       setUrl('')
       onPosted()
     } catch (err) {
-      setNotice((err as Error).message)
+      if (isCrisisError(err)) {
+        setBody('')
+        crisisGuard()
+      } else setNotice((err as Error).message)
     } finally {
       setBusy(false)
     }

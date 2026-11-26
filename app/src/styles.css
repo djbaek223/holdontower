@@ -952,3 +952,116 @@ button.small {
     font-size: 12px;
   }
 }
+
+/* ---------- 4단계: 안전 ---------- */
+.topbar button.who {
+  pointer-events: auto;
+  border: 0;
+  color: #fff;
+  font: inherit;
+  min-height: 30px;
+  cursor: pointer;
+}
+.topbar a.logout {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.toast.warn {
+  background: #fff1ee;
+  color: #a3341f;
+  white-space: normal;
+  text-align: center;
+}
+.confirm.crisis {
+  z-index: 60;
+}
+.hotlines {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hotlines a {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1.5px solid #efe3d1;
+  color: #5b3f24;
+  text-decoration: none;
+  font-size: 15px;
+}
+.hotlines strong {
+  font-size: 20px;
+  margin-right: 8px;
+  color: #b85c2c;
+}
+.my-info h3 {
+  margin: 14px 0 6px;
+  font-size: 15px;
+  color: #5b3f24;
+}
+.block-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.block-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+.leave-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.primary.danger {
+  background: #c0392b;
+}
+.badge.warn {
+  background: #f4c6c0;
+  color: #8a2a1e;
+}
+.post-head .badge {
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.admin {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 16px 60px;
+  color: #2a2520;
+  background: #fffaf0;
+  min-height: 100vh;
+}
+.admin header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.admin h1 {
+  color: #5b3f24;
+}
+.admin-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  border-radius: 10px;
+  padding: 6px 12px;
+}
+.card.warm .primary.danger {
+  background: #c0392b;
+}

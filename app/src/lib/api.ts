@@ -50,6 +50,11 @@ export const ERROR_TEXT: Record<string, string> = {
   not_on_floor: '같은 층 입주민만 볼 수 있는 소식이에요.',
   post_not_found: '숨겨졌거나 없는 소식이에요.',
   invalid_reaction: '없는 반응이에요.',
+  crisis_detected: '이 글은 올리지 않았어요.',
+  restricted: '신고 처리로 지금은 글을 쓰거나 라운지에 들어갈 수 없어요.',
+  invalid_target: '나 자신은 차단할 수 없어요.',
+  not_admin: '운영자만 볼 수 있어요.',
+  invalid_action: '잘못된 처리예요.',
 }
 
 export class ApiError extends Error {
@@ -65,12 +70,26 @@ export type NewsPost = {
   source_url: string | null
   created_at: string
   author: string
+  author_id?: string
   mine: boolean
   reactions: Record<string, number>
   my_reactions: string[]
   comments: number
 }
-export type NewsComment = { id: number; body: string; author: string; mine: boolean; created_at: string }
+export type NewsComment = { id: number; body: string; author: string; author_id?: string; mine: boolean; created_at: string }
+/** 내 상태: 이용 제한, 운영자 여부, 차단한 사람 */
+export type MyStatus = { restricted_until: string | null; is_admin: boolean; blocked: string[] }
+/** 운영자 검토용 신고 묶음 */
+export type AdminReport = {
+  target_type: 'post' | 'comment' | 'chat' | 'user'
+  target_id: string
+  count: number
+  latest: string
+  reasons: ReportReason[]
+  detail: string | null
+  target: { body?: string; status?: string; author?: string; author_id?: string; where?: string } | null
+  restricted_until: string | null
+}
 export const REACTIONS = ['👍', '🔥', '😢', '😂', '👀'] as const
 export type ReportReason = 'solicit' | 'false_info' | 'abuse' | 'privacy' | 'other'
 
@@ -103,7 +122,7 @@ export interface Api {
   getResidency(building: BuildingId): Promise<Residency | null>
   enterWithPrice(building: BuildingId, price: number): Promise<Residency>
   moveFloor(building: BuildingId, floor: number): Promise<Residency>
-  recordMetric(kind: 'first_arrival', value: number): Promise<void>
+  recordMetric(kind: 'first_arrival' | 'crisis', value: number): Promise<void>
   // 3단계: 층 소식
   listNews(building: BuildingId): Promise<NewsPost[]>
   postNews(building: BuildingId, body: string, sourceUrl: string): Promise<void>
@@ -113,6 +132,15 @@ export interface Api {
   report(type: 'post' | 'comment' | 'chat' | 'user', targetId: string, reason: ReportReason, detail?: string): Promise<void>
   /** 라운지 실시간 채널 */
   openChannel(name: string, me: PeerState, h: ChannelHandlers): Channel
+  // 4단계: 안전
+  myStatus(): Promise<MyStatus>
+  block(userId: string): Promise<void>
+  unblock(userId: string): Promise<void>
+  myBlocks(): Promise<{ id: string; nickname: string }[]>
+  adminReports(): Promise<AdminReport[]>
+  adminResolve(type: string, targetId: string, action: 'dismiss' | 'hide' | 'restrict'): Promise<void>
+  /** 탈퇴: 계정과 기록을 모두 지운다 */
+  deleteAccount(): Promise<void>
 }
 
 // ---------- Supabase ----------
@@ -209,7 +237,8 @@ function supabaseApi(client: SupabaseClient): Api {
       await rpc('report_target', { p_type: type, p_target: targetId, p_reason: reason, p_detail: detail ?? null })
     },
     openChannel(name, me, h) {
-      const ch = client.channel(name, { config: { presence: { key: me.id }, broadcast: { self: false } } })
+      // 비공개 채널: 같은 층 입주민만 주고받는다 (0003 의 realtime.messages 정책)
+      const ch = client.channel(name, { config: { private: true, presence: { key: me.id }, broadcast: { self: false } } })
       const peers = () =>
         Object.values(ch.presenceState<PeerState>())
           .map((list) => list[list.length - 1])
@@ -217,17 +246,43 @@ function supabaseApi(client: SupabaseClient): Api {
           .map(({ id, nickname, x, z, yaw }) => ({ id, nickname, x, z, yaw }))
       ch.on('presence', { event: 'sync' }, () => h.onSync(peers()))
       ch.on('broadcast', { event: '*' }, (m: { event: string; payload: Record<string, unknown> }) => h.onEvent(m.event, m.payload))
-      ch.subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await ch.track(me)
-          h.onReady()
-        }
+      // 실시간 연결에 로그인 토큰을 실어야 비공개 채널 권한을 확인할 수 있다
+      client.auth.getSession().then(({ data }) => {
+        if (data.session) client.realtime.setAuth(data.session.access_token)
+        ch.subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await ch.track(me)
+            h.onReady()
+          }
+        })
       })
       return {
         track: (st) => void ch.track(st),
         send: (event, payload) => void ch.send({ type: 'broadcast', event, payload }),
         leave: () => void client.removeChannel(ch),
       }
+    },
+    async myStatus() {
+      return rpc<MyStatus>('my_status', {})
+    },
+    async block(userId) {
+      await rpc('block_user', { p_user: userId })
+    },
+    async unblock(userId) {
+      await rpc('unblock_user', { p_user: userId })
+    },
+    async myBlocks() {
+      return rpc<{ id: string; nickname: string }[]>('my_blocks', {})
+    },
+    async adminReports() {
+      return rpc<AdminReport[]>('admin_reports', {})
+    },
+    async adminResolve(type, targetId, action) {
+      await rpc('admin_resolve', { p_type: type, p_target: targetId, p_action: action })
+    },
+    async deleteAccount() {
+      await rpc('delete_my_account', {})
+      await client.auth.signOut()
     },
   }
 }
@@ -245,6 +300,7 @@ type LocalDb = {
   comments?: LocalComment[]
   reactions?: { post: number; user: string; type: string }[]
   reports?: { type: string; target: string; reporter: string }[]
+  blocks?: { blocker: string; blocked: string }[]
 }
 const LOCAL_KEY = 'sbc.localdb'
 
@@ -374,6 +430,7 @@ function localApi(): Api {
       const reactions = db.reactions ?? []
       return (db.posts ?? [])
         .filter((p) => p.building === building && p.floor === r.floor && !p.hidden)
+        .filter((p) => !(db.blocks ?? []).some((b) => b.blocker === uid && b.blocked === p.author))
         .sort((a, b) => b.id - a.id)
         .slice(0, 50)
         .map((p) => {
@@ -386,6 +443,7 @@ function localApi(): Api {
             source_url: p.source_url,
             created_at: p.created_at,
             author: db.nicknames[p.author] ?? '이웃',
+            author_id: p.author,
             mine: p.author === uid,
             reactions: counts,
             my_reactions: mineR.filter((x) => x.user === uid).map((x) => x.type),
@@ -416,7 +474,8 @@ function localApi(): Api {
       const { db, uid } = me()
       return (db.comments ?? [])
         .filter((c) => c.post === postId)
-        .map((c) => ({ id: c.id, body: c.body, author: db.nicknames[c.author] ?? '이웃', mine: c.author === uid, created_at: c.created_at }))
+        .filter((c) => !(db.blocks ?? []).some((b) => b.blocker === uid && b.blocked === c.author))
+        .map((c) => ({ id: c.id, body: c.body, author: db.nicknames[c.author] ?? '이웃', author_id: c.author, mine: c.author === uid, created_at: c.created_at }))
     },
     async addComment(postId, body) {
       await wait()
@@ -439,6 +498,44 @@ function localApi(): Api {
     },
     openChannel(name, me, h) {
       return localChannel(name, me, h)
+    },
+    async myStatus() {
+      const { db, uid } = me()
+      return { restricted_until: null, is_admin: false, blocked: (db.blocks ?? []).filter((b) => b.blocker === uid).map((b) => b.blocked) }
+    },
+    async block(userId) {
+      const { db, uid } = me()
+      if (userId === uid) throw new ApiError('invalid_target')
+      const list = (db.blocks ??= [])
+      if (!list.some((b) => b.blocker === uid && b.blocked === userId)) list.push({ blocker: uid, blocked: userId })
+      save(db)
+    },
+    async unblock(userId) {
+      const { db, uid } = me()
+      db.blocks = (db.blocks ?? []).filter((b) => !(b.blocker === uid && b.blocked === userId))
+      save(db)
+    },
+    async myBlocks() {
+      const { db, uid } = me()
+      return (db.blocks ?? []).filter((b) => b.blocker === uid).map((b) => ({ id: b.blocked, nickname: db.nicknames[b.blocked] ?? '(탈퇴한 이웃)' }))
+    },
+    async adminReports() {
+      throw new ApiError('not_admin') // 운영자 검토는 Supabase 에서만
+    },
+    async adminResolve() {
+      throw new ApiError('not_admin')
+    },
+    async deleteAccount() {
+      const { db, uid } = me()
+      delete db.nicknames[uid]
+      for (const k of Object.keys(db.residencies)) if (k.startsWith(`${uid}:`)) delete db.residencies[k]
+      db.posts = (db.posts ?? []).filter((p) => p.author !== uid)
+      db.comments = (db.comments ?? []).filter((c) => c.author !== uid)
+      db.reactions = (db.reactions ?? []).filter((r) => r.user !== uid)
+      db.blocks = (db.blocks ?? []).filter((b) => b.blocker !== uid && b.blocked !== uid)
+      db.session = null
+      save(db)
+      listeners.forEach((l) => l(null))
     },
   }
 }

@@ -5,7 +5,7 @@
  *  - 욕설과 극단적 선택을 밈처럼 쓰는 표현은 *** 로 가린다 (운영자가 목록을 갱신한다).
  */
 
-export type Check = { ok: true; text: string } | { ok: false; reason: string }
+export type Check = { ok: true; text: string } | { ok: false; reason: string; crisis?: true }
 
 export const CHAT_MAX = 80
 export const NEWS_MAX = 300
@@ -13,6 +13,13 @@ export const COMMENT_MAX = 100
 
 /** 가리는 낱말 (욕설, 극단적 선택 밈) */
 const MASK_WORDS = ['씨발', '시발', 'ㅅㅂ', '병신', 'ㅂㅅ', '좆', '개새끼', '한강가즈아', '한강물온도', '한강물 온도', '한강 가즈아', '자살각', '뛰어내릴']
+
+/**
+ * 극단적 선택을 암시하는 표현 (PRD F9, 서버 is_crisis 와 같은 목록. 운영자가 정기적으로 갱신).
+ * 감지되면 글을 보내지 않고 쓴 사람에게만 위로와 상담 안내를 보여 준다.
+ */
+export const CRISIS = /(죽고\s*싶|자살|극단적\s*선택|목숨을\s*끊|살기\s*싫|사라지고\s*싶|뛰어\s*내리|뛰어\s*내릴|한강\s*(가즈아|물|가고\s*싶|간다)|유서|생을\s*마감)/
+export const isCrisis = (t: string) => CRISIS.test(t)
 
 /** 투자 권유·유료 리딩방 유도 */
 const SOLICIT = /(리딩방|수익\s*보장|무조건\s*(오른|상승|수익)|원금\s*보장|텔레그램|카톡방|오픈채팅|단톡방\s*초대|급등주\s*추천|매수\s*추천|종목\s*추천해\s*드)/
@@ -34,6 +41,7 @@ function check(raw: string, max: number, { allowUrl }: { allowUrl: boolean }): C
   const text = raw.replace(/\s+/g, ' ').trim()
   if (!text) return { ok: false, reason: '내용을 입력해 주세요.' }
   if (text.length > max) return { ok: false, reason: `${max}자까지 쓸 수 있어요.` }
+  if (isCrisis(text)) return { ok: false, reason: '', crisis: true }
   // 링크 안의 숫자는 개인정보 검사에서 뺀다
   const plain = allowUrl ? text.replace(/https?:\/\/\S+/g, '') : text
   if (PHONE.test(plain) || ACCOUNT.test(plain)) return { ok: false, reason: '전화번호·계좌번호 같은 개인정보는 올릴 수 없어요.' }

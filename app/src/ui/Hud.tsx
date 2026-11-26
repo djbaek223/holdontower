@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { getBuilding } from '../config/buildings'
 import { player, useApp } from '../store'
 import { api, LOGIN_ENABLED } from '../lib/api'
+import { MyInfo } from './MyInfo'
 
 const KEYMAP: Record<string, [number, number]> = {
   ArrowUp: [0, -1],
@@ -75,12 +76,21 @@ export function Hud({ nickname }: { nickname: string }) {
   const inside = useApp((s) => s.insideBuilding)
   const enter = useApp((s) => s.enter)
   const fps = useApp((s) => s.fps)
+  const isAdmin = useApp((s) => s.status.is_admin)
+  const [info, setInfo] = useState(false)
 
   return (
     <>
       <header className="topbar">
         <strong>주식 빌딩 시티</strong>
-        <span className="who">{nickname}</span>
+        <button className="who" onClick={() => setInfo(true)} aria-label={`내 정보: ${nickname}`}>
+          {nickname}
+        </button>
+        {isAdmin && (
+          <a className="logout" href="?admin">
+            신고 검토
+          </a>
+        )}
         {LOGIN_ENABLED && (
           <button className="logout" onClick={() => api.signOut()}>
             로그아웃
@@ -97,6 +107,8 @@ export function Hud({ nickname }: { nickname: string }) {
           <span className="coarse">땅을 눌러 이동 · 드래그 회전 · 핀치 줌</span>
         </p>
       )}
+
+      {info && <MyInfo onClose={() => setInfo(false)} />}
 
       {near && !inside && (
         <button className="enter primary" onClick={() => enter(near)}>

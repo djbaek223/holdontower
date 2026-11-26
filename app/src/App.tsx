@@ -10,8 +10,11 @@ import { Elevator } from './ui/Elevator'
 import { Lobby } from './ui/Lobby'
 import { FloorScreen } from './ui/FloorScreen'
 import { ModelViewer } from './scene/ModelViewer'
+import { CrisisCard } from './ui/CrisisCard'
+import { AdminPage } from './ui/AdminPage'
 
 const VIEWER = new URLSearchParams(location.search).has('viewer')
+const ADMIN = new URLSearchParams(location.search).has('admin')
 
 /** 로그인 상태와 닉네임을 확인해 store에 넣는다 */
 function useAuthBootstrap() {
@@ -36,14 +39,22 @@ function Main() {
   const authReady = useApp((s) => s.authReady)
   const session = useApp((s) => s.session)
   const nickname = useApp((s) => s.nickname)
+  const setStatus = useApp((s) => s.setStatus)
+  const userId = session?.userId
+  // 이용 제한, 운영자 여부, 차단 목록
+  useEffect(() => {
+    if (userId && nickname) api.myStatus().then(setStatus).catch(() => {})
+  }, [userId, nickname, setStatus])
 
   if (!authReady) return <div className="overlay" aria-busy="true" />
   // 로그인을 끈 동안은 별명만 넣고 들어온다 (다시 켜려면 VITE_LOGIN=google)
   if (!LOGIN_ENABLED && (!session || !nickname)) return <GuestEntry />
   if (!session) return <LoginScreen />
   if (!nickname) return <NicknameGate />
+  if (ADMIN) return <AdminPage />
   return (
     <>
+      <CrisisCard />
       <World nickname={nickname} />
       <Hud nickname={nickname} />
       <Lobby />

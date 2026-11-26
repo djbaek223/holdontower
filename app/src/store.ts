@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { Vector3 } from 'three'
 import type { BuildingConfig } from './config/buildings'
-import type { Session } from './lib/api'
+import type { MyStatus, Session } from './lib/api'
 
 type BuildingId = BuildingConfig['id']
 
@@ -68,6 +68,12 @@ interface AppState {
   exit: () => void
   fps: number
   setFps: (n: number) => void
+  /** 이용 제한, 운영자 여부, 차단한 사람 (로그인 뒤 서버에서 읽는다) */
+  status: MyStatus
+  setStatus: (s: MyStatus) => void
+  /** 위기 표현 감지 → 위로·상담 안내 카드 (본인에게만) */
+  crisis: boolean
+  setCrisis: (v: boolean) => void
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -99,4 +105,8 @@ export const useApp = create<AppState>((set) => ({
   exit: () => set({ insideBuilding: null, inElevator: false, atFloor: null }),
   fps: 0,
   setFps: (n) => set({ fps: n }),
+  status: { restricted_until: null, is_admin: false, blocked: [] },
+  setStatus: (status) => set({ status }),
+  crisis: false,
+  setCrisis: (crisis) => set({ crisis }),
 }))

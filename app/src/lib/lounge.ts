@@ -43,12 +43,28 @@ export class LoungeSession {
   private newsListeners = new Set<() => void>()
   private closed = false
   private timer = 0
+  /** 내가 차단한 사람: 채팅·말풍선·이모트를 숨긴다 (PRD F8) */
+  private blocked = new Set<string>()
 
   constructor(
     private building: BuildingId,
     private floor: number,
     private me: PeerState,
   ) {}
+
+  setBlocked(ids: string[]) {
+    this.blocked = new Set(ids)
+    for (const id of ids) this.bubbles.delete(id)
+    this.log = this.log.filter((l) => !this.blocked.has(l.id))
+    this.emit()
+  }
+  isBlocked(id: string) {
+    return this.blocked.has(id)
+  }
+  /** 이 사람이 최근에 한 말 (채팅 신고에 함께 보낸다) */
+  lastLineOf(id: string) {
+    return [...this.log].reverse().find((l) => l.id === id)?.text ?? null
+  }
 
   /** 화면 갱신 구독 (사람 목록, 말풍선, 채팅 기록이 바뀔 때) */
   subscribe(fn: () => void) {
@@ -176,6 +192,8 @@ export class LoungeSession {
       this.peers.delete(id)
       this.present.delete(id)
       this.emit()
+    } else if (this.blocked.has(id) && (event === 'chat' || event === 'emote')) {
+      return // 차단한 사람의 말은 받지 않는다
     } else if (event === 'chat') {
       // 보낸 쪽이 검사했더라도 받는 쪽에서 한 번 더 검사한다
       const c = checkChat(String(m.text ?? ''))
@@ -218,12 +236,12 @@ export class LoungeSession {
     this.sendPos()
   }
 
-  /** 채팅 보내기. 막히면 이유를 돌려준다 */
-  say(raw: string): string | null {
+  /** 채팅 보내기. 막히면 이유를, 위기 표현이면 crisis 를 돌려준다 (그 말은 보내지 않는다) */
+  say(raw: string): { reason: string; crisis?: true } | null {
     const c = checkChat(raw)
-    if (!c.ok) return c.reason
+    if (!c.ok) return c
     const s = this.spam.check(c.text)
-    if (!s.ok) return s.reason
+    if (!s.ok) return s
     this.ch?.send('chat', { id: this.me.id, nickname: this.me.nickname, text: c.text })
     this.bubbles.set(this.me.id, { text: c.text, kind: 'chat', at: Date.now() })
     this.pushLog({ id: this.me.id, nickname: this.me.nickname, text: c.text, at: Date.now(), mine: true })

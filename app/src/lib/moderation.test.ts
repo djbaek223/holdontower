@@ -26,9 +26,15 @@ describe('글 검사', () => {
     expect(checkNews('수익 보장 리딩방 들어오세요').ok).toBe(false)
     expect(checkChat('텔레그램으로 오세요').ok).toBe(false)
   })
-  it('욕설과 극단적 선택 밈은 가린다', () => {
-    const r = checkChat('한강가즈아 ㅠ')
-    expect(r).toEqual({ ok: true, text: '***** ㅠ' })
+  it('욕설은 가린다', () => {
+    expect(checkChat('아 씨발 물렸다')).toEqual({ ok: true, text: '아 ** 물렸다' })
+  })
+  it('극단적 선택을 암시하는 표현은 보내지 않고 위기 안내로 돌린다 (F9)', () => {
+    for (const t of ['한강가즈아 ㅠ', '진짜 죽고 싶다', '그냥 사라지고 싶어', '극단적 선택', '유서 써야겠다']) {
+      expect(checkChat(t), t).toEqual({ ok: false, reason: '', crisis: true })
+    }
+    expect(checkNews('살기 싫다 진짜').ok).toBe(false)
+    expect(checkChat('오늘 한강 공원 산책했어요').ok).toBe(true)
   })
   it('채팅 링크는 막고, 소식 본문 링크 숫자는 개인정보로 보지 않는다', () => {
     expect(checkChat('https://news.example.com').ok).toBe(false)

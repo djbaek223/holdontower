@@ -8,6 +8,7 @@ import { entryStartedAt, useApp } from '../store'
 import { LoungeScene, spawnLounge, walkToElevator, type LoungeNear } from '../scene/LoungeScene'
 import { leaveBuilding } from './Elevator'
 import { NewsPanel } from './NewsPanel'
+import { PeoplePanel } from './PeoplePanel'
 
 /**
  * 처음 층에 도착하면 진입부터 걸린 시간을 한 번 기록한다 (게이트: 1분 이내).
@@ -86,6 +87,9 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
   const session0 = useApp((s) => s.session)
   const nickname = useApp((s) => s.nickname) ?? ''
   const backToElevator = useApp((s) => s.backToElevator)
+  const status = useApp((s) => s.status)
+  const setCrisis = useApp((s) => s.setCrisis)
+  const restricted = !!status.restricted_until
   const myId = session0?.userId ?? 'me'
   useState(() => spawnLounge())
   const session = useMemo(
@@ -96,14 +100,19 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
   const [, force] = useState(0)
   useEffect(() => {
     const off = session.subscribe(() => force((n) => n + 1))
-    session.join()
+    // 이용 제한 중이면 라운지 채널에 들어가지 않는다 (서버 정책도 막는다)
+    if (!useApp.getState().status.restricted_until) session.join()
     return () => {
       off()
       session.leave()
     }
   }, [session])
 
+  // 차단 목록이 바뀌면 라운지에도 반영
+  useEffect(() => session.setBlocked(status.blocked), [session, status.blocked])
+
   const seconds = useFirstArrivalMetric()
+  const [peopleOpen, setPeopleOpen] = useState(false)
   const [near, setNear] = useState<LoungeNear>(null)
   const [boardOpen, setBoardOpen] = useState(false)
   const [text, setText] = useState('')
@@ -149,7 +158,12 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
   const send = (e: React.FormEvent) => {
     e.preventDefault()
     const err = session.say(text)
-    if (err) setNotice(err)
+    if (err?.crisis) {
+      // 보내지 않고, 나에게만 위로와 상담 안내 (감지 건수만 지표로 남긴다)
+      setText('')
+      setCrisis(true)
+      api.recordMetric('crisis', 1).catch(() => {})
+    } else if (err) setNotice(err.reason)
     else setText('')
   }
 
@@ -169,7 +183,7 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
       <header className="elevator-head">
         <span className="chip">
           {b.name} · {label} 라운지
-          <span className="room">{session.room ? ` · ${session.room}번 방 ${session.count}명` : ' · 연결 중…'}</span>
+          <span className="room">{restricted ? ' · 이용 제한 중' : session.room ? ` · ${session.room}번 방 ${session.count}명` : ' · 연결 중…'}</span>
         </span>
         <span className="head-actions">
           <button className="chip button" onClick={backToElevator}>
@@ -181,11 +195,16 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
         </span>
       </header>
 
+      {restricted && (
+        <p className="toast warn">
+          신고 처리로 {new Date(status.restricted_until!).toLocaleString('ko-KR')}까지 라운지 대화와 글쓰기가 제한돼요.
+        </p>
+      )}
       {seconds !== null && <p className="toast">입주 완료! 들어온 지 {seconds}초 만에 도착했어요.</p>}
 
       {showLog && session.log.length > 0 && (
         <ol className="chat-log" aria-label="최근 대화">
-          {session.log.slice(-8).map((l) => (
+          {session.log.filter((l) => !session.isBlocked(l.id)).slice(-8).map((l) => (
             <li key={`${l.id}:${l.at}`} className={l.mine ? 'mine' : ''}>
               <strong>{l.nickname}</strong> {l.text}
             </li>
@@ -218,6 +237,9 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
           <button className={`emote-btn log ${showLog ? 'on' : ''}`} aria-pressed={showLog} onClick={() => setShowLog((v) => !v)}>
             대화
           </button>
+          <button className="emote-btn log" aria-expanded={peopleOpen} onClick={() => setPeopleOpen(true)}>
+            이웃 {session.peers.size}
+          </button>
           <button className="emote-btn news" onClick={openBoard}>
             층 소식{news.unread ? <span className="dot-count">{news.unread}</span> : null}
           </button>
@@ -227,7 +249,8 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
             ref={input}
             aria-label="채팅"
             maxLength={CHAT_MAX}
-            placeholder="같은 층 이웃에게 한마디 (Enter)"
+            placeholder={restricted ? '이용 제한 중이에요' : '같은 층 이웃에게 한마디 (Enter)'}
+            disabled={restricted}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === 'Escape' && (e.target as HTMLInputElement).blur()}
@@ -237,6 +260,8 @@ function Lounge({ b, floor }: { b: BuildingConfig; floor: number }) {
           </button>
         </form>
       </div>
+
+      {peopleOpen && <PeoplePanel session={session} onClose={() => setPeopleOpen(false)} />}
 
       {boardOpen && (
         <NewsPanel
