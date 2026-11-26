@@ -1,0 +1,12 @@
+# 시스템·편집기
+.DS_Store
+.claude/settings.local.json
+
+# 의존성·빌드 결과
+node_modules
+dist
+
+# 비밀 값 (Supabase 키 등은 .env.local 에만)
+.env
+.env*.local
+*.tsbuildinfo
