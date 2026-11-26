@@ -18,8 +18,13 @@ npm test             # 서버를 띄워 클라이언트 여러 개로 통합 테
 
 앱은 기본으로 `페이지 주소의 2567 포트`에 붙는다. 같은 와이파이의 휴대폰도 `http://<맥 IP>:5173` 으로 들어오면 그대로 연결된다.
 
-## 배포
+## 배포 (Render)
 
-Vercel 은 오래 열린 WebSocket 서버를 돌릴 수 없어서 컨테이너 호스팅(Fly.io, Render, Railway, Colyseus Cloud 등)에 따로 올린다.
-환경 변수 `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `PORT` 를 넣고 `LOCAL_AUTH` 는 넣지 않는다.
-앱에는 `VITE_REALTIME_URL` 로 이 서버 주소(https)를 알려 준다.
+Vercel 은 오래 열린 WebSocket 서버를 돌릴 수 없어서 Render 에 따로 올린다. 저장소 루트의 `render.yaml` 블루프린트를 쓴다.
+
+1. Render → New → Blueprint → 이 저장소 선택. `holdontower-realtime` 웹 서비스(무료, 싱가포르)가 만들어진다.
+2. 환경 변수 `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` 를 넣는다. `PORT` 는 Render 가 넣고, `LOCAL_AUTH` 는 넣지 않는다.
+3. 배포가 끝나면 `https://<서비스>.onrender.com/__healthcheck` 가 `OK` 를 돌려준다.
+4. Vercel 의 `VITE_REALTIME_URL` 에 `wss://<서비스>.onrender.com` 을 넣고 앱을 다시 배포한다.
+
+무료 플랜은 15분 동안 접속이 없으면 잠들어, 다음 첫 입장이 30초쯤 걸릴 수 있다.

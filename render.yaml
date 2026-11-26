@@ -1,0 +1,25 @@
+# Render 블루프린트: 층 라운지 실시간 서버 (Colyseus)
+# 앱(화면)은 Vercel 에 따로 올린다. 이 서버 주소(wss://…onrender.com)를 Vercel 의 VITE_REALTIME_URL 에 넣는다.
+services:
+  - type: web
+    name: holdontower-realtime
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: server
+    # server/src 가 ../app/src/lib/moderation.ts 를 함께 쓰므로 저장소 전체가 필요하다 (Render 는 전체를 받는다).
+    buildCommand: npm ci --include=dev
+    startCommand: npm start
+    healthCheckPath: /__healthcheck
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - server/**
+        - app/src/lib/moderation.ts
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
