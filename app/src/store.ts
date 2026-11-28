@@ -23,7 +23,16 @@ export const cameraRig = {
   baseZoom: 10,
   /** 섬 전체를 볼 때 바라보는 점 */
   center: new Vector3(0, 0, 0),
+  /** 사용자가 화면을 옮기거나 핀치했으면 true: 캐릭터 자동 추적을 멈춘다 (캐릭터 보기 버튼으로 해제) */
+  free: false,
+  /** 캐릭터 보기 버튼을 눌렀다 (CameraGestures 가 0.4초 동안 카메라를 캐릭터로 옮긴다) */
+  focusRequested: false,
+  /** 캐릭터로 돌아가는 중 */
+  focusing: false,
 }
+
+/** 마을에서 누른 대상 (빌딩 또는 주민) */
+export type Selection = { kind: 'building'; id: BuildingId } | { kind: 'npc'; name: string } | null
 
 /**
  * 처음 들어온 시각 (PRD 10장 '입주까지 걸린 시간' 측정용).
@@ -74,6 +83,12 @@ interface AppState {
   /** 위기 표현 감지 → 위로·상담 안내 카드 (본인에게만) */
   crisis: boolean
   setCrisis: (v: boolean) => void
+  /** 마을에서 누른 빌딩·주민 */
+  selected: Selection
+  select: (s: Selection) => void
+  /** 카메라가 캐릭터를 따라가지 않는 중 (캐릭터 보기 버튼 표시) */
+  cameraFree: boolean
+  setCameraFree: (v: boolean) => void
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -96,7 +111,7 @@ export const useApp = create<AppState>((set) => ({
   atFloor: null,
   enter: (id) => {
     player.target = null
-    set({ insideBuilding: id, inElevator: false, lobbyFrom: 'entrance', atFloor: null })
+    set({ insideBuilding: id, inElevator: false, lobbyFrom: 'entrance', atFloor: null, selected: null })
   },
   boardElevator: () => set({ inElevator: true, atFloor: null }),
   toLobby: () => set({ inElevator: false, lobbyFrom: 'elevator', atFloor: null }),
@@ -109,4 +124,8 @@ export const useApp = create<AppState>((set) => ({
   setStatus: (status) => set({ status }),
   crisis: false,
   setCrisis: (crisis) => set({ crisis }),
+  selected: null,
+  select: (selected) => set({ selected }),
+  cameraFree: false,
+  setCameraFree: (v) => set((s) => (s.cameraFree === v ? s : { cameraFree: v })),
 }))

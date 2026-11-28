@@ -12,7 +12,8 @@ import {
 } from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import type { ThreeEvent } from '@react-three/fiber'
-import { player } from '../store'
+import { player, useApp } from '../store'
+import { clickBlocked } from './touchGesture'
 import { Prop, hash, type Part } from './lowpoly'
 import { ISLAND, OBSTACLES, PATHS, PLOTS, inRect, isPath, onIsland, resolveCollisions, type Plot } from './townPlan'
 
@@ -248,8 +249,9 @@ export function Island() {
   }, [])
 
   const onGroundClick = (e: ThreeEvent<MouseEvent>) => {
-    if (e.delta > 6) return // 드래그(카메라 회전)는 이동 아님
+    if (clickBlocked(e.delta)) return // 드래그·두 손가락 조작은 이동 아님
     e.stopPropagation()
+    useApp.getState().select(null)
     const p = e.point.clone()
     p.y = 0
     resolveCollisions(p)

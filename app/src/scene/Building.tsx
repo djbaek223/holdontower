@@ -2,7 +2,8 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { Color, InstancedMesh, MeshBasicMaterial, Object3D } from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { BuildingConfig } from '../config/buildings'
-import { player } from '../store'
+import { player, useApp } from '../store'
+import { clickBlocked } from './touchGesture'
 import { BUILDING_SIZE, FLOOR_H, LOBBY_H, ROOF_H, buildingHeight, entrancePoint, stackedFloorCount } from './layout'
 import { interiorTexture, repeated } from './patterns'
 import { textTexture } from './textTexture'
@@ -145,8 +146,9 @@ export function Building({ b }: { b: BuildingConfig }) {
   const lobbyGlass = useMemo(() => repeated(interiorTexture(), 2, 1), [])
 
   const onClick = (e: ThreeEvent<MouseEvent>) => {
-    if (e.delta > 6) return // 카메라 드래그는 무시
+    if (clickBlocked(e.delta)) return // 카메라 조작은 무시
     e.stopPropagation()
+    useApp.getState().select({ kind: 'building', id: b.id })
     player.target = entrance.clone()
   }
 

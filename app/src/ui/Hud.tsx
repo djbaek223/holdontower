@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getBuilding } from '../config/buildings'
-import { player, useApp } from '../store'
+import { cameraRig, player, useApp } from '../store'
 import { api, LOGIN_ENABLED } from '../lib/api'
 import { MyInfo } from './MyInfo'
 
@@ -78,6 +78,9 @@ export function Hud({ nickname }: { nickname: string }) {
   const fps = useApp((s) => s.fps)
   const isAdmin = useApp((s) => s.status.is_admin)
   const [info, setInfo] = useState(false)
+  const selected = useApp((s) => s.selected)
+  const select = useApp((s) => s.select)
+  const cameraFree = useApp((s) => s.cameraFree)
 
   return (
     <>
@@ -104,8 +107,42 @@ export function Hud({ nickname }: { nickname: string }) {
       {!inside && (
         <p className="hint">
           <span className="fine">땅을 클릭해 이동 · 드래그 회전 · 휠 줌 · WASD/화살표</span>
-          <span className="coarse">땅을 눌러 이동 · 드래그 회전 · 핀치 줌</span>
+          <span className="coarse">
+            {['탭해서 이동', '드래그로 화면 이동', '두 손가락 드래그로 회전', '핀치로 확대/축소'].map((t, i) => (
+              <span key={t} className="hint-item">
+                {i > 0 && ' · '}
+                {t}
+              </span>
+            ))}
+          </span>
         </p>
+      )}
+
+      {!inside && (
+        <button
+          className={`focus-me ${cameraFree ? 'away' : ''}`}
+          onClick={() => {
+            cameraRig.focusRequested = true
+          }}
+          aria-label="카메라를 내 캐릭터로"
+          title="내 캐릭터 보기"
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" />
+            <circle cx="12" cy="12" r="2.4" fill="currentColor" />
+            <path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+
+      {selected && !inside && (
+        <div className="selection" role="status">
+          <strong>{selected.kind === 'building' ? `${getBuilding(selected.id).name} 빌딩` : selected.name}</strong>
+          <span>{selected.kind === 'building' ? (near === selected.id ? '입구 앞' : '입구로 가는 중') : '마을 주민'}</span>
+          <button onClick={() => select(null)} aria-label="선택 해제">
+            ✕
+          </button>
+        </div>
       )}
 
       {info && <MyInfo onClose={() => setInfo(false)} />}

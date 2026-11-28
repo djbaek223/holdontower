@@ -209,6 +209,11 @@ export function Player({ nickname }: { nickname: string }) {
     let moving = false
     if (kx || kz) {
       player.target = null
+      // 키보드로 걸으면 다시 캐릭터를 따라간다
+      if (cameraRig.free) {
+        cameraRig.free = false
+        useApp.getState().setCameraFree(false)
+      }
       camera.getWorldDirection(fwd)
       fwd.y = 0
       fwd.normalize()
@@ -264,7 +269,8 @@ export function Player({ nickname }: { nickname: string }) {
     }
 
     // 카메라: 섬 전체가 보이는 배율에서는 섬 중심을, 확대할수록 캐릭터를 따라간다
-    if (controls) {
+    // (손가락으로 화면을 옮겼거나 캐릭터 보기로 돌아가는 중이면 따라가지 않는다)
+    if (controls && !cameraRig.free && !cameraRig.focusing) {
       const zoom = (state.camera as OrthographicCamera).zoom ?? 1
       const follow = Math.min(1, Math.max(0, (zoom / cameraRig.baseZoom - 1) / 0.8))
       desired.set(
