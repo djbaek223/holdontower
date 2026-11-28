@@ -75,19 +75,21 @@ export function CameraGestures() {
         if (!groundAt(a.from.x, a.from.y, hitA) || !groundAt(a.to.x, a.to.y, hitB)) return
         takeOver()
         translate(hitA.sub(hitB))
-      } else if (a.type === 'rotate') {
-        // 데스크톱 마우스 끌기와 같은 방향·감도 (화면 높이만큼 끌면 한 바퀴)
-        const angle = (-2 * Math.PI * a.dx) / el.clientHeight
-        offset.subVectors(camera.position, controls.target).applyAxisAngle(UP, angle)
-        camera.position.copy(controls.target).add(offset)
       } else {
-        if (!groundAt(a.fromMid.x, a.fromMid.y, hitA)) return
-        takeOver()
-        const z = Math.max(controls.minZoom, Math.min(controls.maxZoom, camera.zoom * a.scale))
-        camera.zoom = z
-        camera.updateProjectionMatrix()
-        // 손가락 가운데 밑의 땅이 그대로 손가락 가운데에 남도록 옮긴다 (가운데가 움직이면 함께 이동)
-        if (groundAt(a.toMid.x, a.toMid.y, hitB)) translate(hitA.sub(hitB))
+        if (a.dx !== 0) {
+          // 화면 가운데(바라보는 점)를 축으로 세로축 회전. 데스크톱 마우스 끌기와 같은 방향·감도 (화면 높이만큼 끌면 한 바퀴)
+          const angle = (-2 * Math.PI * a.dx) / el.clientHeight
+          offset.subVectors(camera.position, controls.target).applyAxisAngle(UP, angle)
+          camera.position.copy(controls.target).add(offset)
+          controls.update() // 아래 땅 좌표 계산이 돌린 카메라 방향을 쓰도록
+        }
+        if (a.scale !== 1 && groundAt(a.mid.x, a.mid.y, hitA)) {
+          takeOver()
+          camera.zoom = Math.max(controls.minZoom, Math.min(controls.maxZoom, camera.zoom * a.scale))
+          camera.updateProjectionMatrix()
+          // 손가락 가운데 밑의 땅이 확대 뒤에도 손가락 가운데에 남도록 옮긴다
+          if (groundAt(a.mid.x, a.mid.y, hitB)) translate(hitA.sub(hitB))
+        }
       }
       controls.update()
     }
@@ -128,7 +130,7 @@ export function CameraGestures() {
     if (!controls) return
     // 두 손가락 제스처는 프레임마다 한 번 (두 손가락 이동이 모두 반영된 뒤)
     const multi = townGesture.flush()
-    if (multi && multi.type !== 'pan') applyRef.current?.(multi)
+    if (multi) applyRef.current?.(multi)
     if (cameraRig.focusRequested) {
       cameraRig.focusRequested = false
       cameraRig.focusing = true
