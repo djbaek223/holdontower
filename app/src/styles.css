@@ -241,6 +241,78 @@ input:focus-visible {
   .hint .coarse {
     display: inline;
   }
+  /* 터치 안내는 네 가지라 좁은 화면에서는 두 줄로 */
+  .hint {
+    white-space: normal;
+    text-align: center;
+    width: max-content;
+    border-radius: 14px;
+    line-height: 1.45;
+  }
+}
+
+/* 캐릭터 보기 버튼 */
+.focus-me {
+  position: fixed;
+  right: 16px;
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 56px);
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: #ffffffe6;
+  color: #0f172a;
+  box-shadow: 0 4px 14px #0f172a40;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.focus-me.away {
+  background: var(--primary);
+  color: #fff;
+}
+.focus-me:active {
+  transform: scale(0.92);
+}
+.focus-me:focus-visible {
+  outline: 3px solid #fbbf24;
+  outline-offset: 2px;
+}
+
+/* 누른 빌딩·주민 */
+.selection {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(max(10px, env(safe-area-inset-top)) + 46px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 14px;
+  border-radius: 999px;
+  background: #ffffffeb;
+  color: #0f172a;
+  font-size: 14px;
+  box-shadow: 0 4px 14px #0f172a33;
+  max-width: calc(100vw - 32px);
+  white-space: nowrap;
+  animation: pop 0.18s ease-out;
+}
+.selection span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.selection button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #0f172a;
+  cursor: pointer;
 }
 
 /* ---------- 2단계: 로그인·엘리베이터·층 화면 ---------- */

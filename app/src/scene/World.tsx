@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import type { OrthographicCamera } from 'three'
+import type { OrthographicCamera, TOUCH } from 'three'
 import { cameraRig, useApp } from '../store'
 import { Town } from './Town'
 import { skyTexture } from './patterns'
 import { Player } from './Player'
 import { Clouds } from './Clouds'
+import { CameraGestures } from './CameraGestures'
 
 /** 0.5초마다 평균 FPS를 store에 기록 (게이트: 모바일 30fps 이상 확인용) */
 function FpsProbe() {
@@ -28,6 +29,9 @@ function FpsProbe() {
 const VIEW_DIR: [number, number, number] = [1, 0.95, 1.15]
 const ISLAND_SPAN = 150 // 화면에 담을 섬 폭 (대각선 기준)
 
+/** OrbitControls 의 터치 조작 끄기 (TOUCH 값이 아니면 아무것도 하지 않는다) */
+const NO_TOUCH = { ONE: -1 as TOUCH, TWO: -1 as TOUCH }
+
 /** 모바일·저사양은 그림자 해상도를 낮춘다 */
 const LOW_POWER = typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches || window.innerWidth < 768)
 
@@ -35,6 +39,7 @@ const LOW_POWER = typeof window !== 'undefined' && (window.matchMedia?.('(pointe
 function FitCamera() {
   const camera = useThree((s) => s.camera) as OrthographicCamera
   const size = useThree((s) => s.size)
+  const controls = useThree((s) => s.controls) as unknown as { minZoom: number } | null
   useEffect(() => {
     // 세로 화면(모바일)은 섬 좌우를 조금 잘라 더 크게 보여 준다
     const span = size.width < size.height ? ISLAND_SPAN * 0.62 : ISLAND_SPAN
@@ -42,9 +47,11 @@ function FitCamera() {
     cameraRig.baseZoom = zoom
     camera.zoom = zoom
     camera.updateProjectionMatrix()
-    // 처음 한 번만 (이후 확대·축소는 사용자 조작)
+    // 축소는 섬 전체가 보이는 배율보다 조금만 더, 확대는 기존 상한까지
+    if (controls) controls.minZoom = Math.max(2.5, zoom * 0.7)
+    // 처음 한 번만 (이후 확대·축소는 사용자 조작). controls 는 처음 그린 뒤에 생긴다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [controls])
   return null
 }
 
@@ -87,6 +94,8 @@ export function World({ nickname }: { nickname: string }) {
         makeDefault
         target={[c.x, c.y, c.z]}
         enablePan={false}
+        // 터치는 CameraGestures 가 맡는다 (한 손가락 팬, 두 손가락 회전, 핀치). 마우스·휠은 그대로
+        touches={NO_TOUCH}
         enableDamping
         dampingFactor={0.12}
         zoomSpeed={1.8}
@@ -97,6 +106,7 @@ export function World({ nickname }: { nickname: string }) {
       />
       <Town />
       <Player nickname={nickname} />
+      <CameraGestures />
       <FpsProbe />
       <FitCamera />
     </Canvas>
