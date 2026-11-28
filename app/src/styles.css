@@ -251,6 +251,11 @@ input:focus-visible {
   }
 }
 
+/* 줄이 바뀌어도 한 항목은 끊지 않는다 */
+.hint-item {
+  white-space: nowrap;
+}
+
 /* 캐릭터 보기 버튼 */
 .focus-me {
   position: fixed;

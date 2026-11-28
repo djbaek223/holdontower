@@ -26,8 +26,10 @@ describe('TouchGesture', () => {
     const g = new TouchGesture()
     g.down(1, 100, 200)
     g.down(2, 200, 200)
-    expect(g.move(2, 205, 200)).toBeNull() // 아직 판정 전
-    const a = g.move(2, 230, 200)
+    g.move(2, 205, 200)
+    expect(g.flush()).toBeNull() // 아직 판정 전
+    g.move(2, 230, 200)
+    const a = g.flush()
     expect(a?.type).toBe('pinch')
     if (a?.type === 'pinch') {
       expect(a.scale).toBeCloseTo(130 / 100)
@@ -39,10 +41,14 @@ describe('TouchGesture', () => {
     const g = new TouchGesture()
     g.down(1, 100, 200)
     g.down(2, 200, 200)
-    expect(g.move(1, 108, 200)).toBeNull() // 가운데 4px: 아직 판정 전
-    expect(g.move(2, 216, 200)).toEqual({ type: 'rotate', dx: 12 }) // 가운데 12px, 간격 변화 4px
-    expect(g.move(1, 120, 201)).toEqual({ type: 'rotate', dx: 6 })
+    // 한 프레임에 두 손가락이 12px 씩 따로 이벤트를 보내도 회전으로 판정
+    g.move(1, 112, 200)
+    g.move(2, 212, 200)
+    expect(g.flush()).toEqual({ type: 'rotate', dx: 12 })
+    g.move(1, 118, 201)
+    expect(g.flush()).toEqual({ type: 'rotate', dx: 3 })
     expect(g.currentMode).toBe('rotate')
+    expect(g.flush()).toEqual({ type: 'rotate', dx: 0 })
   })
 
   it('두 손가락 중 하나를 떼도 남은 손가락으로 팬·탭이 되지 않는다', () => {
@@ -51,6 +57,7 @@ describe('TouchGesture', () => {
     g.down(2, 200, 200)
     g.up(2, 500)
     expect(g.move(1, 160, 260)).toBeNull()
+    expect(g.flush()).toBeNull()
     expect(g.tapBlocked(510)).toBe(true)
     g.up(1, 600)
     expect(g.tapBlocked(650)).toBe(true) // 핀치 뒤 유령 탭
@@ -64,5 +71,6 @@ describe('TouchGesture', () => {
     g.down(2, 230, 100)
     expect(g.currentMode).toBe('multi-pending')
     expect(g.move(1, 131, 100)).toBeNull()
+    expect(g.flush()).toBeNull()
   })
 })

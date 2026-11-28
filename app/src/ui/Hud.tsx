@@ -107,7 +107,14 @@ export function Hud({ nickname }: { nickname: string }) {
       {!inside && (
         <p className="hint">
           <span className="fine">땅을 클릭해 이동 · 드래그 회전 · 휠 줌 · WASD/화살표</span>
-          <span className="coarse">탭해서 이동 · 드래그로 화면 이동 · 두 손가락 드래그로 회전 · 핀치로 확대/축소</span>
+          <span className="coarse">
+            {['탭해서 이동', '드래그로 화면 이동', '두 손가락 드래그로 회전', '핀치로 확대/축소'].map((t, i) => (
+              <span key={t} className="hint-item">
+                {i > 0 && ' · '}
+                {t}
+              </span>
+            ))}
+          </span>
         </p>
       )}
 

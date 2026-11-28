@@ -79,8 +79,16 @@ export class TouchGesture {
       this.last = { x, y }
       return { type: 'pan', from, to: { x, y } }
     }
+    return null
+  }
+
+  /**
+   * 두 손가락 제스처는 한 화면(프레임)에 한 번 판정한다. 브라우저는 손가락마다 따로 이동 이벤트를 보내서,
+   * 한 손가락만 반영된 순간에 판정하면 나란히 끌기(회전)를 간격 변화(핀치)로 잘못 읽는다.
+   */
+  flush(): GestureAction | null {
     if (this.mode === 'multi-pending' || this.mode === 'rotate' || this.mode === 'pinch') {
-      if (!this.order.slice(0, 2).includes(id)) return null
+      if (this.pts.size < 2) return null
       const cur = this.pair()
       if (this.mode === 'multi-pending') {
         const dDist = Math.abs(cur.dist - this.multiStart.dist)

@@ -4,7 +4,7 @@ import { OrthographicCamera, Plane, Raycaster, Vector2, Vector3 } from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { cameraRig, player, useApp } from '../store'
 import { ISLAND } from './townPlan'
-import { lastPointer, townGesture } from './touchGesture'
+import { lastPointer, townGesture, type GestureAction } from './touchGesture'
 
 const GROUND = new Plane(new Vector3(0, 1, 0), 0)
 const ray = new Raycaster()
@@ -32,6 +32,7 @@ export function CameraGestures() {
   const gl = useThree((s) => s.gl)
   const connected = useThree((s) => s.events.connected) as HTMLElement | undefined
   const controls = useThree((s) => s.controls) as unknown as OrbitControlsImpl | null
+  const applyRef = useRef<((a: GestureAction) => void) | null>(null)
 
   useEffect(() => {
     const el = connected ?? gl.domElement
@@ -69,10 +70,7 @@ export function CameraGestures() {
       townGesture.down(e.pointerId, e.clientX, e.clientY)
     }
 
-    const onMove = (e: PointerEvent) => {
-      if (e.pointerType !== 'touch') return
-      const a = townGesture.move(e.pointerId, e.clientX, e.clientY)
-      if (!a) return
+    const apply = (a: GestureAction) => {
       if (a.type === 'pan') {
         if (!groundAt(a.from.x, a.from.y, hitA) || !groundAt(a.to.x, a.to.y, hitB)) return
         takeOver()
@@ -92,6 +90,13 @@ export function CameraGestures() {
         if (groundAt(a.toMid.x, a.toMid.y, hitB)) translate(hitA.sub(hitB))
       }
       controls.update()
+    }
+    applyRef.current = apply
+
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return
+      const a = townGesture.move(e.pointerId, e.clientX, e.clientY)
+      if (a) apply(a)
     }
 
     const onUp = (e: PointerEvent) => {
@@ -113,6 +118,7 @@ export function CameraGestures() {
       window.removeEventListener('pointercancel', onUp, true)
       el.removeEventListener('gesturestart', stop)
       townGesture.reset()
+      applyRef.current = null
     }
   }, [camera, gl, connected, controls])
 
@@ -120,6 +126,9 @@ export function CameraGestures() {
   const anim = useRef({ t0: 0, from: new Vector3(), zoomFrom: 1, zoomTo: 1 }).current
   useFrame(() => {
     if (!controls) return
+    // 두 손가락 제스처는 프레임마다 한 번 (두 손가락 이동이 모두 반영된 뒤)
+    const multi = townGesture.flush()
+    if (multi && multi.type !== 'pan') applyRef.current?.(multi)
     if (cameraRig.focusRequested) {
       cameraRig.focusRequested = false
       cameraRig.focusing = true
